@@ -4,7 +4,51 @@ output: html_document
 date: "2023-11-07"
 ---
 
-```{r setup, include=FALSE}
+```{r setup, message= FALSE}
+library(tidyverse)
+library(rvest)
+library(httr)
+```
+
+## Problem 1 
+Load in the data from github link: 
+```{r}
+url = "https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
+homicide_html = read_csv(url)
+
+homicide_html |> view()
+```
+
+The data above is a collection of criminal homicides that occurred within the 50 largest US cities over the past 10 years. This data was provided by The Washington Post and includes identifiers for each homicide, demographic information about the victim, where each homicide occurred and the disposition result. This raw data has `r homicide_html |> ncol() ` columns to describe different variables for each homicide and `r homicide_html |> nrow() ` rows for each criminal homicide entry. 
+
+Creating a `city_state` variable. 
+```{r}
+homicide_html 
+```
+
+Baltimore, MD proportion of unsolved homicides 
+```{r}
+homicide_html |> 
+  filter(city == "Baltimore")
+```
+
+## Problem 2
+
+I DIDNT READ THE PROBLEM - i need to iterate over file names???? is that different than what i did
+```{r}
+long_study = list.files(path = "./data", full.names = TRUE) |> 
+  map_dfr(read_csv) |> 
+  mutate(
+    file_name = print(list.files(path = "./data")),
+    file_name = str_remove_all(file_name, ".csv")) |>
+  separate(file_name, into = c("group", "arm"), sep = "_") |> 
+  view()
+              
+```
+
+## Problem 3
+
+```{r}
 
 ```
 
