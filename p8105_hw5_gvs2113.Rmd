@@ -8,6 +8,7 @@ date: "2023-11-07"
 library(tidyverse)
 library(rvest)
 library(httr)
+library(purrr)
 ```
 
 ## Problem 1 
@@ -16,39 +17,71 @@ Load in the data from github link:
 url = "https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
 homicide_html = read_csv(url)
 
-homicide_html |> view()
 ```
 
 The data above is a collection of criminal homicides that occurred within the 50 largest US cities over the past 10 years. This data was provided by The Washington Post and includes identifiers for each homicide, demographic information about the victim, where each homicide occurred and the disposition result. This raw data has `r homicide_html |> ncol() ` columns to describe different variables for each homicide and `r homicide_html |> nrow() ` rows for each criminal homicide entry. 
 
-Creating a `city_state` variable. 
+Creating a `city_state` variable and summarizing. 
 ```{r}
-homicide_html 
+homicide_df = 
+  homicide_html |> 
+  mutate(
+    city_state = paste(city, state, sep = ", "),
+    unsolved = as.numeric(disposition %in% "Open/No arrest", "Closed without arrest")
+    ) 
+
+homicide_df |> 
+  group_by(city_state) |> 
+  summarise(total_homicide = n(),
+            open_cases = sum(unsolved)) |> 
+  knitr::kable(digits = 0)
 ```
 
 Baltimore, MD proportion of unsolved homicides 
 ```{r}
-homicide_html |> 
-  filter(city == "Baltimore")
+homicide_df |> 
+  filter(city_state == "Baltimore, MD") 
 ```
 
 ## Problem 2
 
-I DIDNT READ THE PROBLEM - i need to iterate over file names???? is that different than what i did
-```{r}
+Creating a data frame for all participants: 
+```{r, message = FALSE}
 long_study = list.files(path = "./data", full.names = TRUE) |> 
   map_dfr(read_csv) |> 
   mutate(
     file_name = print(list.files(path = "./data")),
     file_name = str_remove_all(file_name, ".csv")) |>
-  separate(file_name, into = c("group", "arm"), sep = "_") |> 
-  view()
-              
+  separate(file_name, into = c("control_arm", "subject_ID"), sep = "_") |> 
+  select(subject_ID, control_arm,  everything())
 ```
+
+Tidying
+```{r}
+tidy_long_study = 
+  long_study |> 
+  pivot_longer(
+    week_1:week_8,
+    names_to = "week_number",
+    names_prefix = "week_",
+    values_to = "result"
+  ) |> 
+  mutate(week_number = as.numeric(week_number))
+```
+
+Spaghetti Plot
+```{r}
+tidy_long_study |> 
+  group_by(control_arm) |> 
+  ggplot(aes(x = week_number, y = result, color = subject_ID)) + geom_line() + facet_grid(.~ control_arm)
+```
+
+When considering the results of the above spaghetti plots, there is a notable increase in results for the experimental arm when compared to the control arm. Also, there is an upward linear trend in results for the experimental arm over time, while the control arm have relatively negative or null trend lines. There are several control arm subjects that dip into negative results and thus, yield the minimum result values, while the experimental arm results are only ever negative at the initial week 1 results. All results for the experimental group are positive and yield the maximum results for all subjects.  
 
 ## Problem 3
 
 ```{r}
+set.seed(1)
 
 ```
 
