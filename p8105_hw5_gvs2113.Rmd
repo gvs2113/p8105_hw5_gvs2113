@@ -27,7 +27,7 @@ homicide_df =
   homicide_html |> 
   mutate(
     city_state = paste(city, state, sep = ", "),
-    unsolved = as.numeric(disposition %in% "Open/No arrest", "Closed without arrest")
+    unsolved = as.numeric(disposition %in% c("Open/No arrest", "Closed without arrest"))
     ) 
 
 homicide_df |> 
@@ -39,9 +39,23 @@ homicide_df |>
 
 Baltimore, MD proportion of unsolved homicides 
 ```{r}
-homicide_df |> 
-  filter(city_state == "Baltimore, MD") 
+baltimore_totals = 
+  homicide_df |> 
+  filter(city_state == "Baltimore, MD") |> 
+  summarize(total_homicide = n(),
+            unsolved = sum(unsolved)) |> view()
+#Total Homicide = 2827 and Total Unsolved = 1825 
+
+prop.test(x = 1825, n = 2827) |> 
+  broom::tidy() |> 
+  select(estimate, conf.low, conf.high)
 ```
+
+Run `prop.test` on each city:
+```{r}
+```
+
+
 
 ## Problem 2
 
@@ -82,6 +96,49 @@ When considering the results of the above spaghetti plots, there is a notable in
 
 ```{r}
 set.seed(1)
+
+sim_function = function (n = 30, sigma = 5, mu = 0) {
+  
+  sim_data = tibble(
+    x = rnorm(n = 30, mean = mu, sd = sigma),
+    )
+  
+  sim_data |> 
+    t.test(conf.level = 0.95) |> 
+    broom::tidy() |> 
+    select(estimate, p.value)
+}
+```
+
+```{r}
+sim_results_df = 
+  expand_grid(
+    mu = 0:6,
+    iter = 1:100 #need to change to 5000 but dont want to crash computer
+  ) |> 
+  mutate(
+    estimate_df = map(mu, sim_function)
+  ) |> 
+  unnest(estimate_df)
+
+```
+
+Plot of Power vs. True Value 
+```{r}
+#power.t.test() ##idk what to use as input, do i need another iteration?
+```
+
+
+Plot of Average Estimate vs. True Value 
+```{r}
+sim_results_df |> 
+  group_by(mu) |> 
+  summarize(mean_est = mean(estimate)) |> 
+  ggplot(aes(x = mu, y = mean_est)) + geom_point()
+```
+
+Plot of Average Estimate (when null was rejected) vs. True Value
+```{r}
 
 ```
 
