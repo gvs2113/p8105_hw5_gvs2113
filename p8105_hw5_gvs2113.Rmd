@@ -9,6 +9,19 @@ library(tidyverse)
 library(rvest)
 library(httr)
 library(purrr)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
 ```
 
 ## Problem 1 
@@ -16,7 +29,6 @@ Load in the data from github link:
 ```{r}
 url = "https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
 homicide_html = read_csv(url)
-
 ```
 
 The data above is a collection of criminal homicides that occurred within the 50 largest US cities over the past 10 years. This data was provided by The Washington Post and includes identifiers for each homicide, demographic information about the victim, where each homicide occurred and the disposition result. This raw data has `r homicide_html |> ncol() ` columns to describe different variables for each homicide and `r homicide_html |> nrow() ` rows for each criminal homicide entry. 
@@ -43,23 +55,20 @@ baltimore_totals =
   homicide_df |> 
   filter(city_state == "Baltimore, MD") |> 
   summarize(total_homicide = n(),
-            unsolved = sum(unsolved)) |> view()
+            unsolved = sum(unsolved))
 #Total Homicide = 2827 and Total Unsolved = 1825 
 
-prop.test(x = 1825, n = 2827) |> 
-  broom::tidy() |> 
-  select(estimate, conf.low, conf.high)
+#prop.test(x = 1825, n = 2827) |> 
+  #broom::tidy() |> 
+  #select(estimate, conf.low, conf.high)
 ```
 
 Run `prop.test` on each city:
-```{r}
-```
-
 
 
 ## Problem 2
 
-Creating a data frame for all participants: 
+**Creating a data frame for all participants using `list.files`:** 
 ```{r, message = FALSE}
 long_study = list.files(path = "./data", full.names = TRUE) |> 
   map_dfr(read_csv) |> 
@@ -70,7 +79,7 @@ long_study = list.files(path = "./data", full.names = TRUE) |>
   select(subject_ID, control_arm,  everything())
 ```
 
-Tidying
+**Tidying the above dataframe according to instructions**
 ```{r}
 tidy_long_study = 
   long_study |> 
@@ -83,62 +92,108 @@ tidy_long_study =
   mutate(week_number = as.numeric(week_number))
 ```
 
-Spaghetti Plot
+**Spaghetti Plot**
 ```{r}
 tidy_long_study |> 
   group_by(control_arm) |> 
-  ggplot(aes(x = week_number, y = result, color = subject_ID)) + geom_line() + facet_grid(.~ control_arm)
+  ggplot(aes(x = week_number, y = result, color = subject_ID)) + geom_line() + facet_grid(.~ control_arm) + 
+  labs(
+    title = "Observations of all participants over time by Arm",
+    x = "Week Number", 
+    y = "Observation Result", 
+    colour = "Subject ID"
+  )
 ```
 
 When considering the results of the above spaghetti plots, there is a notable increase in results for the experimental arm when compared to the control arm. Also, there is an upward linear trend in results for the experimental arm over time, while the control arm have relatively negative or null trend lines. There are several control arm subjects that dip into negative results and thus, yield the minimum result values, while the experimental arm results are only ever negative at the initial week 1 results. All results for the experimental group are positive and yield the maximum results for all subjects.  
 
 ## Problem 3
 
+**Writing Functions for normal model and t-test:**
 ```{r}
-set.seed(1)
+rnorm_function = function(n, mu) {
+    rnorm(n = n, mean = mu, sd = 5)
+}
 
-sim_function = function (n = 30, sigma = 5, mu = 0) {
-  
-  sim_data = tibble(
-    x = rnorm(n = 30, mean = mu, sd = sigma),
-    )
-  
-  sim_data |> 
-    t.test(conf.level = 0.95) |> 
-    broom::tidy() |> 
-    select(estimate, p.value)
+ttest_function = function(x) {
+   t.test(x = x, mu = 0, conf.level = 0.95) |> 
+    broom::tidy()
 }
 ```
 
+**Applying design elements give in problem to functions through `map` and `map2`**
 ```{r}
+set.seed(1)
+
 sim_results_df = 
   expand_grid(
+    n = 30, 
     mu = 0:6,
-    iter = 1:100 #need to change to 5000 but dont want to crash computer
+    iter = 1:50 #change to 5000 later
   ) |> 
-  mutate(
-    estimate_df = map(mu, sim_function)
-  ) |> 
-  unnest(estimate_df)
-
+  mutate(sim_df = map2(n, mu, \(x, y) rnorm_function(n = x, mu = y))) |> 
+  mutate(ttest_result = map(sim_df, \(w) ttest_function(x = w))) |> 
+  unnest(ttest_result) |> 
+  select(mu, estimate, p.value)
 ```
 
-Plot of Power vs. True Value 
+**Plot of Power vs. True Value**
 ```{r}
-#power.t.test() ##idk what to use as input, do i need another iteration?
+power_results = 
+  sim_results_df |>
+  mutate(rejected = case_when(
+                              p.value > 0.05 ~ "not rejected",
+                              p.value < 0.05 ~ "rejected"
+                              )) |> 
+  group_by(mu) |> 
+  summarize(n = n(),
+            rejected = sum(rejected == "rejected")) |> 
+  mutate(power_prop = rejected/n) 
+
+ggplot(data = power_results, aes(x = mu, y = power_prop)) + geom_point() + geom_line() + 
+  labs(
+    title = "Power vs Mu Value",
+    x = "True Value of Mu",
+    y = "Proportion of times the null was rejected (Power)"
+  )
 ```
 
+This graph output shows that as the effect size (value of mu) increases, the power gets closer to the maximum value of 1. The power was a minimum when mu was equal to 0 in which it had a value of `r power_results |> filter(mu == 0) |> pull(power_prop)`. The power had a maximum value of `r power_results  |> pull(power_prop) |> max()` when mu was equal to both 5 and 6. The quickest increases in power were when the true value of mu was between 0 and 3 and then the value plateaus until it reaches its maximum. 
 
-Plot of Average Estimate vs. True Value 
+**Plot of Average Estimate vs. True Value** 
 ```{r}
+avg_est = 
 sim_results_df |> 
   group_by(mu) |> 
-  summarize(mean_est = mean(estimate)) |> 
-  ggplot(aes(x = mu, y = mean_est)) + geom_point()
+  summarize(mean_est = mean(estimate))
+  
+ avg_est |>  
+  ggplot(aes(x = mu, y = mean_est)) + geom_point() + geom_line() +
+  labs(
+    title = "Average Estimate for Mu vs True Value of Mu",
+    x = "True Value of Mu",
+    y = "Average Estimate of Sample Mu"
+  )
 ```
 
-Plot of Average Estimate (when null was rejected) vs. True Value
+**Plot of Average Estimate (when null was rejected) vs. True Value**
 ```{r}
+rej_avg_est = 
+sim_results_df |> 
+  filter(p.value < 0.05) |> 
+  group_by(mu) |> 
+  summarize(mean_est = mean(estimate)) 
 
+rej_avg_est|> 
+  ggplot(aes(x = mu, y = mean_est, color = "teal")) + geom_point() + geom_line() + geom_point(data = avg_est, aes(x = mu, y = mean_est, colour = "red")) + geom_line(data = avg_est, aes(x = mu, y = mean_est, colour = "red")) +
+  labs(
+    title = "Average Estimate With Rejected Null vs True Value of Mu",
+    x = "True Value of Mu",
+    y = "Average Estimate of Mu With Rejected Null"
+  ) +
+  scale_color_discrete(labels = c("All Data", "Rejected Null"), name = "Input Data Type")
 ```
 
+When comparing these data, the plot generated for all of the data is much closer to being linear than the plot generated from the estimates in which the null was rejected. As the true value of mu increases, the two lines come together and converge when the mu value is 5 and 6. The largest difference between the two values is when mu is 1. 
+
+The sample average estimate of mu for which the null is rejected is not approximately equal to the true value of mu. It actually is less accurate than the plot generated with all of the data estimates of mu. This is due to the power associated at each value of mu. Power is defined as the proportion of times the null was rejected (due to its p value being < 0.05). For the lower values of mu, the power is much lower and changing drastically between mu values, so there are a lower amount of rejected values which are then used to estimate the value of mu which yields a less accurate value. 
