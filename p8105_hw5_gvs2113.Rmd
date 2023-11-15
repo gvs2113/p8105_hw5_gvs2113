@@ -1,7 +1,7 @@
 ---
 title: "Homework 5 - P8105 (UNI: gvs2113)"
 output: html_document
-date: "2023-11-07"
+date: "2023-11-14"
 ---
 
 ```{r setup, message= FALSE}
@@ -25,31 +25,39 @@ options(
 ```
 
 ## Problem 1 
-Load in the data from github link: 
+**Load in the data from github link:** 
 ```{r}
 url = "https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
 homicide_html = read_csv(url)
+homicide_ds = 
+  homicide_html|> 
+  mutate(
+    victim_sex = replace(victim_sex, victim_sex == "Unknown", NA),
+    victim_age = replace(victim_age, victim_sex == "Unknown", NA),
+    victim_race = replace(victim_race, victim_sex == "Unknown", NA)) |> 
+  drop_na()
 ```
 
-The data above is a collection of criminal homicides that occurred within the 50 largest US cities over the past 10 years. This data was provided by The Washington Post and includes identifiers for each homicide, demographic information about the victim, where each homicide occurred and the disposition result. This raw data has `r homicide_html |> ncol() ` columns to describe different variables for each homicide and `r homicide_html |> nrow() ` rows for each criminal homicide entry. 
+The data above is a collection of criminal homicides that occurred within the 50 largest US cities over the past 10 years. This data was provided by The Washington Post and includes identifiers for each homicide, demographic information about the victim, where each homicide occurred and the disposition result. This raw data has `r homicide_html |> ncol() ` columns to describe different variables for each homicide and `r homicide_html |> nrow() ` rows for each criminal homicide entry. The majority of victims described in this dataset are `r homicide_ds |>  pull (victim_race)|> max(na.rm = T)` and `r homicide_ds |> pull(victim_sex) |> max(na.rm = T)`. 
 
-Creating a `city_state` variable and summarizing. 
+**Creating a `city_state` variable and summarizing.**
 ```{r}
 homicide_df = 
   homicide_html |> 
   mutate(
     city_state = paste(city, state, sep = ", "),
     unsolved = as.numeric(disposition %in% c("Open/No arrest", "Closed without arrest"))
-    ) 
+    ) |> 
+  filter(city_state != "Tulsa, AL") 
 
-homicide_df |> 
+all_city_totals = 
+  homicide_df |> 
   group_by(city_state) |> 
   summarise(total_homicide = n(),
-            open_cases = sum(unsolved)) |> 
-  knitr::kable(digits = 0)
+            open_cases = sum(unsolved))
 ```
 
-Baltimore, MD proportion of unsolved homicides 
+**Baltimore, MD summary of total and unsolved homicides** 
 ```{r}
 baltimore_totals = 
   homicide_df |> 
@@ -57,14 +65,46 @@ baltimore_totals =
   summarize(total_homicide = n(),
             unsolved = sum(unsolved))
 #Total Homicide = 2827 and Total Unsolved = 1825 
-
-#prop.test(x = 1825, n = 2827) |> 
-  #broom::tidy() |> 
-  #select(estimate, conf.low, conf.high)
 ```
 
-Run `prop.test` on each city:
+**Baltimore, MD `prop.test`**
+```{r}
+bmore_test = 
+  prop.test(
+    x = baltimore_totals |>  pull(unsolved),
+    n = baltimore_totals |>  pull(total_homicide)) 
 
+broom::tidy(bmore_test) |>  
+  select(estimate, conf.low, conf.high) |> 
+  knitr::kable(digits = 3)
+```
+
+**Running `prop.test` for all cities in dataset**
+```{r}
+all_city_test = 
+  all_city_totals |>  
+  mutate(
+    prop_tests = map2(open_cases, total_homicide, \(x, y) prop.test(x = x, n = y)),
+    tidy_tests = map(prop_tests, broom::tidy)) |>  
+  select(-prop_tests) |> 
+  unnest(tidy_tests) |> 
+  select(city_state, estimate, conf.low, conf.high) |>  
+  mutate(city_state = fct_reorder(city_state, estimate))
+```
+
+```{r}
+all_city_test |>  
+  mutate(city_state = fct_reorder(city_state, estimate)) |>  
+  ggplot(aes(x = city_state, y = estimate)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  labs(
+    title = "Estimates and CI for All Cities Resulting from prop.test",
+    x = "City",
+    y = "Estimate"
+  )
+```
 
 ## Problem 2
 
@@ -129,7 +169,7 @@ sim_results_df =
   expand_grid(
     n = 30, 
     mu = 0:6,
-    iter = 1:50 #change to 5000 later
+    iter = 1:5000
   ) |> 
   mutate(sim_df = map2(n, mu, \(x, y) rnorm_function(n = x, mu = y))) |> 
   mutate(ttest_result = map(sim_df, \(w) ttest_function(x = w))) |> 
@@ -194,6 +234,6 @@ rej_avg_est|>
   scale_color_discrete(labels = c("All Data", "Rejected Null"), name = "Input Data Type")
 ```
 
-When comparing these data, the plot generated for all of the data is much closer to being linear than the plot generated from the estimates in which the null was rejected. As the true value of mu increases, the two lines come together and converge when the mu value is 5 and 6. The largest difference between the two values is when mu is 1. 
+When comparing these data, the plot generated for all of the data is linear while the plot generated from the estimates in which the null was rejected is not. As the true value of mu increases, the two lines come together and converge as the mu value surpasses 4. The largest difference between the two values is when mu is 1. 
 
 The sample average estimate of mu for which the null is rejected is not approximately equal to the true value of mu. It actually is less accurate than the plot generated with all of the data estimates of mu. This is due to the power associated at each value of mu. Power is defined as the proportion of times the null was rejected (due to its p value being < 0.05). For the lower values of mu, the power is much lower and changing drastically between mu values, so there are a lower amount of rejected values which are then used to estimate the value of mu which yields a less accurate value. 
